@@ -193,20 +193,63 @@
 
 > 该功能使用图形处理和键盘模拟方式实现，仅测试目前较常用的两个分辨率（1920x1080/2560x1440），其他分辨率在未自行配置的情况下无法正常使用（特别是16：9缩放比之外的分辨率），检测允许一定的滤镜范围，但建议使用该功能时不要开滤镜，以免导致某个检测无效。
 
-
 ---
 
-# 扩展模块（第三方，由 Tudorose 维护）
+# 扩展模块（第三方）
 
-本仓库在宿主配置之上附带两个扩展：
+> 本节所述内容由 Tudorose 维护，与宿主作者无关。宿主 `LOLAutomationTools` 及其原始配置（`Config/`）归 © 莲歆所有，本仓库对它们不做任何修改。
 
-| 模块 | 说明 | 安装 |
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Tudorose/LOLAutomationTools?include_prereleases)](https://github.com/Tudorose/LOLAutomationTools/releases)
+
+## 模块一览
+
+| 模块 | 一句话说明 | 详情 |
 |---|---|---|
-| **[VoiceModule](voice-module/)** | 本地语音转文字 → 发送到游戏聊天；敏感词过滤、替换规则 | [voice-module/README.md](voice-module/README.md) |
-| **[OP.GG launcher](opgg-launcher/)** | 把 Seraphine 的 OP.GG 窗口嫁接到"扩展功能"页 | [opgg-launcher/README.md](opgg-launcher/README.md) |
+| **VoiceModule** | 按住快捷键说话，本地识别后把文字发到游戏聊天 | [voice-module/README.md](voice-module/README.md) |
+| **OP.GG launcher** | 把 Seraphine 的 OP.GG 战绩窗口嫁接到"扩展功能"页 | [opgg-launcher/README.md](opgg-launcher/README.md) |
 
-一键安装（在本仓库根目录）：
+## 快速开始
+
+### 1. 准备宿主
+从[上游发布页](https://github.com/Seraph1ne/LOLAutomationTools/releases)下载 `LOLAutomationTools`（≥ 2.9.801）并解压到任意目录，下文记作 `<宿主目录>`。
+本仓库**不分发**宿主程序。
+
+### 2. 下载语音模型
+VoiceModule 需要 sherpa-onnx 格式的 ASR 模型（约 254 MB），本仓库**不分发**模型，下载地址与目录布局见 [voice-module/README.md → 模型下载](voice-module/README.md#模型下载)。
+
+### 3. 一键安装
+在本仓库根目录执行（PowerShell）：
 ```powershell
-.\scripts\install.ps1 -HostDir <宿主目录> -ModelDir <模型目录>
+.\scripts\install.ps1 -HostDir <宿主目录> -ModelDir <解压好的模型目录>
 ```
-宿主程序本身请从[上游发布页](https://github.com/Seraph1ne/LOLAutomationTools/releases)获取；本仓库不分发宿主及 ASR 模型。
+可选项：
+```powershell
+-WithOpgg -SeraphineDir <Seraphine 目录>    # 同时安装 OP.GG launcher
+-VoiceZip <本地 zip>                          # 离线安装，跳过下载
+```
+脚本会自动：下载 Release 的 `VoiceModule-latest.zip` → 停止宿主 → 复制 dll/pdb → 写入 `exe.config`（已存在不覆盖）→ 放置默认配置到 `Extend/`（已存在不覆盖）→ 复制模型。
+
+### 4. 启用
+启动 `LOLAutomationTools.exe` → 左侧 **扩展功能** → **语音** 分组 → 打开 **语音转文字** 开关。按住 `空格` 说话，松开即发送到队内聊天。
+
+## 下载
+
+| 文件 | 说明 |
+|---|---|
+| [`VoiceModule-latest.zip`](https://github.com/Tudorose/LOLAutomationTools/releases/latest/download/VoiceModule-latest.zip) | 编译好的模块 + 默认配置（约 275 KB） |
+
+## 许可
+
+| 内容 | 许可 |
+|---|---|
+| `voice-module/`、`opgg-launcher/launcher.py`、`scripts/` | [MIT](LICENSE) |
+| `Config/`、`README.md` 前半部分（宿主原始内容） | © 莲歆，归上游所有 |
+| `LOLAutomationTools.exe` 及其随附库 | © 莲歆，**未在本仓库分发** |
+| Seraphine（OP.GG launcher 依赖） | [GPL-3.0](https://github.com/ZhangBin-000/Seraphine)，**未在本仓库分发** |
+| sherpa-onnx 运行时 / ASR 模型 | [Apache-2.0](https://github.com/k2-fsa/sherpa-onnx)，**未在本仓库分发** |
+
+## 致谢
+- [Seraph1ne/LOLAutomationTools](https://github.com/Seraph1ne/LOLAutomationTools) —— 宿主程序
+- [ZhangBin-000/Seraphine](https://github.com/ZhangBin-000/Seraphine) —— OP.GG 窗口来源
+- [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) —— 离线语音识别

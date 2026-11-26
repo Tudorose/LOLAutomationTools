@@ -19,10 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-Scope: this license covers only the files under voice-module/ (excluding
-LOLAutomationTools.exe and its bundled libraries, which are (c) 莲歆 and not
-redistributed here), opgg-launcher/launcher.py, and scripts/. Seraphine
-(GPL-3.0), sherpa-onnx (Apache-2.0), and the ASR models keep their own
-licenses.
