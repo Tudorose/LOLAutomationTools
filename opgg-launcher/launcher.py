@@ -1,0 +1,449 @@
+# -*- coding: utf-8 -*-
+# OpggLauncher: Seraphine OP.GG window host process (grafted, standalone)
+# Lifecycle: launched by voicemodule host (OpggIntegration.cs); killed on host exit.
+# Window closing only hides (OpggWindow.closeEvent ignores & hides) - process stays alive.
+
+import os
+import sys
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+# --- diagnostics: direct file logging (graft-only, works under pythonw) ---
+import datetime as _dt
+_dbgPath = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_launcher_debug.log')
+
+def _d(*args):
+    try:
+        with open(_dbgPath, 'a', encoding='utf-8') as _f:
+            _f.write(_dt.datetime.now().strftime('%H:%M:%S') + ' ' +
+                     ' '.join(str(a) for a in args) + chr(10))
+    except Exception:
+        pass
+
+def _reloadCfg():
+    """Reload config.json from disk before reading the OP.GG toggles.
+
+    qfluentwidgets caches the whole config in memory when this process
+    starts, so a toggle change written by the host UI (which writes
+    config.json directly, without notifying the running launcher) stays
+    invisible until the launcher is restarted. Reloading here lets the
+    host-side AutoShowOpgg / enableOpggOnTop toggles take effect
+    immediately. Safe to call from any slot: QConfig.load only re-reads
+    the file into memory and never raises on a malformed file.
+    """
+    try:
+        cfg.load()
+    except Exception as e:
+        _d('cfg.load() failed (non-fatal):', repr(e))
+
+def _excepthook(etype, val, tb):
+    import traceback
+    _d('FATAL:', ''.join(traceback.format_exception(etype, val, tb)))
+sys.excepthook = _excepthook
+_d('launcher.py starting, pid=' + str(os.getpid()))
+
+from PyQt5.QtGui import QFont
+from PyQt5.QtCore import Qt, QTranslator, QObject, QEvent
+from app.common.qfluentwidgets import FluentTranslator
+from qasync import QApplication, QEventLoop, asyncSlot
+import asyncio
+import sys
+
+from app.common.config import cfg, VERSION, BETA
+from app.common.logger import logger
+from app.common.signals import signalBus
+from app.lol.connector import connector
+from app.lol.opgg import opgg
+from app.lol.exceptions import RetryMaximumAttempts
+from app.lol.listener import LolProcessExistenceListener
+from app.lol.tools import ChampionSelection, showOpggBuild
+from app.view.opgg_window import OpggWindow
+
+TAG = 'OpggLauncher'
+
+
+async def showOpggBuild(data, selection):
+    '''Mirror of app.lol.tools.showOpggBuild (reconstructed from bytecode).'''
+    cellId = data['localPlayerCellId']
+
+    for actionGroup in data['actions']:
+        for action in actionGroup:
+            if action['actorCellId'] != cellId:
+                continue
+            if action['type'] != 'pick':
+                continue
+            if not action['completed']:
+                return False
+
+    for player in data['myTeam']:
+        if player['cellId'] == cellId:
+            position = player.get('assignedPosition', '')
+            championId = player['championId'] or player['championPickIntent']
+            break
+    else:
+        return False
+
+    if championId == selection.opggShowChampionId:
+        return False
+
+    map = {
+        'TOP': 'TOP',
+        'JUNGLE': 'JUNGLE',
+        'MID': 'MIDDLE',
+        'ADC': 'BOTTOM',
+        'SUPPORT': 'UTILITY',
+    }
+    position = map.get(position, '')
+
+    if championId == 0:
+        return False
+
+    if data.get('benchEnabled'):
+        mode = 'aram'
+    elif len(data['myTeam']) == 2:
+        mode = 'arena'
+    else:
+        mode = ''
+
+    selection.opggShowChampionId = championId
+    _d('emit toOpggBuildInterface', championId, mode, position)
+    signalBus.toOpggBuildInterface.emit(championId, mode, position)
+    return True
+
+
+class OpggHost(QObject):
+    '''Pure logic container: keeps Seraphine's OP.GG flow, drops main-window UI.'''
+
+    def __init__(self, loop):
+        super().__init__()
+        self.championSelection = ChampionSelection()
+        self.opggWindow = OpggWindow()
+        self.processListener = LolProcessExistenceListener(None)
+        self.isClientProcessRunning = False
+        self.currentSummoner = None
+        self.isGaming = False
+        self._inChampSelect = False
+        self._lastPollStatus = None
+        self._lastHandledStatus = None
+        self._pollFail = 0
+        # manual = window was opened by the host button (.show/.toggle),
+        # so the LCU None/Lobby auto-hide must not reclaim it
+        self._manual = False
+        self._stateFile = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.state')
+        self._writeState(False)
+        # suppress the Seraphine startup show() of the OP.GG window; visibility
+        # is driven by the host via .show/.hide/.toggle signals and LCU phase
+        self._suppressShow = True
+        self.opggWindow.installEventFilter(self)
+
+        self.__connectSignalToSlot()
+        self.processListener.start()
+
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.__terminateListeners)
+
+        asyncio.ensure_future(self.__showSignalWatcher(), loop=loop)
+        asyncio.ensure_future(self.__statusPoller(), loop=loop)
+
+    def __connectSignalToSlot(self):
+        signalBus.lolClientStarted.connect(self.__onLolClientStarted)
+        signalBus.lolClientEnded.connect(self.__onLolClientEnded)
+        signalBus.lolClientChanged.connect(self.__onLolClientChanged)
+        signalBus.gameStatusChanged.connect(self.__onGameStatusChanged)
+        signalBus.champSelectChanged.connect(self.__onChampSelectChanged)
+
+    def __terminateListeners(self):
+        self.processListener.terminate()
+
+    def _writeState(self, visible):
+        try:
+            with open(self._stateFile, 'w', encoding='utf-8') as f:
+                f.write('visible' if visible else 'hidden')
+        except Exception as e:
+            _d('writeState failed:', repr(e))
+
+    def eventFilter(self, obj, event):
+        try:
+            if obj is self.opggWindow:
+                if event.type() == QEvent.Show:
+                    if self._suppressShow:
+                        _d('show suppressed during startup')
+                        return True
+                    self._writeState(True)
+                elif event.type() == QEvent.Hide:
+                    self._writeState(False)
+        except Exception as e:
+            _d('eventFilter error:', repr(e))
+        return False
+
+    async def __showSignalWatcher(self):
+        baseDir = os.path.dirname(os.path.abspath(__file__))
+        showFile = os.path.join(baseDir, '.show')
+        hideFile = os.path.join(baseDir, '.hide')
+        toggleFile = os.path.join(baseDir, '.toggle')
+        reloadFile = os.path.join(baseDir, '.reload')
+        while True:
+            await asyncio.sleep(0.5)
+            try:
+                if os.path.exists(showFile):
+                    os.remove(showFile)
+                    _d('.show consumed -> window show()')
+                    self._manual = True
+                    self.__showWindow()
+                if os.path.exists(hideFile):
+                    os.remove(hideFile)
+                    _d('.hide consumed -> window hide()')
+                    self._manual = False
+                    self.opggWindow.hide()
+                if os.path.exists(toggleFile):
+                    os.remove(toggleFile)
+                    _d('.toggle consumed')
+                    if self.opggWindow.isVisible():
+                        self._manual = False
+                        self.opggWindow.hide()
+                    else:
+                        self._manual = True
+                        self.__showWindow()
+                if os.path.exists(reloadFile):
+                    os.remove(reloadFile)
+                    _d('.reload consumed -> cfg.load()')
+                    _reloadCfg()
+            except Exception as e:
+                logger.error(str(e), TAG)
+
+    def __showWindow(self):
+        self._suppressShow = False
+        self.opggWindow.show()
+        _d('window isVisible=', self.opggWindow.isVisible(), 'winId=', int(self.opggWindow.winId()))
+        self.opggWindow.showNormal()
+        self.opggWindow.raise_()
+
+    async def __startConnector(self, pid):
+        _d('__startConnector pid=', pid)
+        try:
+            await connector.start(pid)
+            _d('connector.start OK')
+            return True
+        except RetryMaximumAttempts:
+            _d('connector RetryMaximumAttempts')
+            await connector.close()
+            if self.processListener.isRunning():
+                self.processListener.runningPid = 0
+            else:
+                signalBus.tasklistNotFound.emit()
+            return False
+
+    @asyncSlot(int)
+    async def __onLolClientStarted(self, pid):
+        _d('SIGNAL lolClientStarted pid=', pid)
+        logger.info(f'League of Legends client started: {pid}', TAG)
+        res = await self.__startConnector(pid)
+        if not res:
+            return
+
+        self._suppressShow = True
+        await opgg.start()
+        _d('opgg started (show suppressed until LCU phase resolves)')
+        self.isClientProcessRunning = True
+        self._pollFail = 0
+        self._lastPollStatus = None
+        self._lastHandledStatus = None
+
+        folder, status = await asyncio.gather(
+            connector.getInstallFolder(), connector.getGameStatus())
+
+        asyncio.create_task(self.opggWindow.initWindow())
+        self.opggWindow.setHomeInterfaceEnabled(False)
+        _d('initWindow begin, status=', status)
+
+        self._suppressShow = False
+        await self.__onGameStatusChanged(status)
+
+        # Startup phase press: if LOL is already in ChampSelect /
+        # InProgress / GameStart when the host (re)connects, press the
+        # OP.GG button exactly once - same path as the manual host
+        # button. ChampSelect already showed the window via the status
+        # handler above, so this only adds the in-game phases; window
+        # already open -> leave it alone, never press twice.
+        _reloadCfg()
+        if (status in ('ChampSelect', 'GameStart', 'InProgress')
+                and cfg.get(cfg.autoShowOpgg)):
+            if not self.opggWindow.isVisible():
+                _d('startup phase', status, '-> press opgg button once')
+                self._manual = False
+                self.__showWindow()
+            else:
+                _d('startup phase', status, '-> already open, no action')
+
+        _d('client started flow done')
+
+    @asyncSlot()
+    async def __onLolClientEnded(self):
+        _d('SIGNAL lolClientEnded')
+        logger.info('League of Legends client ended', TAG)
+        await connector.close()
+        await opgg.close()
+        self.isClientProcessRunning = False
+        self.currentSummoner = None
+        self._inChampSelect = False
+        self._lastPollStatus = None
+        self._lastHandledStatus = None
+        self.opggWindow.setHomeInterfaceEnabled(True)
+
+    @asyncSlot(int)
+    async def __onLolClientChanged(self, pid):
+        _d('SIGNAL lolClientChanged pid=', pid)
+        logger.info(f'League of Legends client changed: {pid}', TAG)
+        await self.__onLolClientEnded()
+        self.processListener.runningPid = pid
+        await self.__onLolClientStarted(pid)
+
+    async def __statusPoller(self):
+        '''REST polling fallback: a second channel next to the WS push.
+        Credentials are never cached here - connector re-derives port/token
+        from the live client pid, so a LOL restart (new port/token) is picked
+        up via lolClientChanged; the self-heal below rebinds the connector
+        when the session goes stale while the client is still alive.'''
+        await asyncio.sleep(5)
+        while True:
+            try:
+                if self.isClientProcessRunning:
+                    status = await connector.getGameStatus()
+                    self._pollFail = 0
+                    if status != self._lastPollStatus:
+                        _d('poller status transition:', self._lastPollStatus, '->', status)
+                        self._lastPollStatus = status
+                        await self.__onGameStatusChanged(status)
+            except Exception as e:
+                self._pollFail += 1
+                if self._pollFail in (1, 5, 15) or self._pollFail % 60 == 0:
+                    _d('poller error #' + str(self._pollFail) + ' (non-fatal):', repr(e))
+                if (self._pollFail >= 10 and self._pollFail % 10 == 0
+                        and self.processListener.runningPid):
+                    pid = self.processListener.runningPid
+                    _d('poller self-heal: rebind connector to pid', pid)
+                    try:
+                        await self.__onLolClientChanged(pid)
+                        self._pollFail = 0
+                    except Exception as e2:
+                        _d('poller self-heal failed:', repr(e2))
+            await asyncio.sleep(1.5)
+
+    async def __onChampionSelectBegin(self):
+        _d('ChampionSelectBegin enter')
+        # Auto-press the OP.GG button exactly once, mirroring the manual
+        # host-button path. If the window is already open (user pressed it
+        # earlier), only raise it to the front - never re-show, so we never
+        # flash or fight the manual button state machine.
+        if cfg.get(cfg.autoShowOpgg):
+            if self.opggWindow.isVisible():
+                _d('already open -> raise only, no re-show')
+                self.opggWindow.showNormal()
+                self.opggWindow.raise_()
+                self.opggWindow.activateWindow()
+            else:
+                _d('auto press: __showWindow once (same as host button path)')
+                self._manual = False
+                self.__showWindow()
+
+        if cfg.get(cfg.enableOpggOnTop):
+            self.opggWindow.setStaysOnTopEnabled(True)
+
+        try:
+            self.championSelection.reset()
+            session = await connector.getChampSelectSession()
+        except Exception as e:
+            _d('getChampSelectSession failed (non-fatal):', repr(e))
+
+    @asyncSlot(str)
+    async def __onGameStatusChanged(self, status):
+        if status == self._lastHandledStatus:
+            return  # duplicate delivery from the other channel (WS push / REST poller)
+        self._lastHandledStatus = status
+        _d('gameStatusChanged:', status)
+        # refresh host-written toggles before any gate reads them
+        _reloadCfg()
+        if status == 'ChampSelect':
+            if not self._inChampSelect:
+                self._inChampSelect = True
+                await self.__onChampionSelectBegin()
+        else:
+            if self._inChampSelect:
+                self.opggWindow.setStaysOnTopEnabled(False)
+            self._inChampSelect = False
+            # equivalent to the host button popping up once: hide only if
+            # visible, stay put otherwise - same state machine, no conflicts
+            if status in ('None', 'Lobby'):
+                try:
+                    if self.opggWindow.isVisible() and not self._manual:
+                        _d('auto-hide on status', status)
+                        self.opggWindow.hide()
+                    elif self.opggWindow.isVisible() and self._manual:
+                        _d('manual window open -> skip auto-hide on', status)
+                except Exception as e:
+                    _d('auto-hide failed:', repr(e))
+
+        self.isGaming = status in ('GameStart', 'InProgress')
+
+    @asyncSlot(dict)
+    async def __onChampSelectChanged(self, data):
+        data = data['data']
+        phase = {
+            'PLANNING': [],
+            'BAN_PICK': [showOpggBuild],
+            'FINALIZATION': [showOpggBuild],
+        }
+        for func in phase.get(data['timer']['phase'], []):
+            _res = await func(data, self.championSelection)
+            _d('phase func result=', _res)
+            if _res:
+                break
+
+
+def main():
+    args = sys.argv
+    if len(args) == 2 and args[1] in ('--version', '-v'):
+        print(BETA or VERSION)
+        return
+
+    if cfg.get(cfg.dpiScale) == 'Auto':
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+    else:
+        os.environ['QT_ENABLE_HIGHDPI_SCALING'] = '0'
+        os.environ['QT_SCALE_FACTOR'] = str(cfg.get(cfg.dpiScale))
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+
+    font = QFont()
+    font.setStyleStrategy(QFont.PreferAntialias)
+    font.setHintingPreference(QFont.PreferFullHinting)
+    QApplication.setFont(font)
+
+    app = QApplication(sys.argv)
+    app.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings)
+
+    eventLoop = QEventLoop(app)
+    asyncio.set_event_loop(eventLoop)
+    def _aioHandler(loop, context):
+        _d('ASYNC ERROR:', context.get('message'), repr(context.get('exception')))
+    eventLoop.set_exception_handler(_aioHandler)
+
+    appCloseEvent = asyncio.Event()
+    app.aboutToQuit.connect(appCloseEvent.set)
+
+    locale = cfg.get(cfg.language).value
+    fluentTranslator = FluentTranslator(locale)
+    seraphineTranslator = QTranslator()
+    seraphineTranslator.load(locale, 'Seraphine', '.', './app/resource/i18n')
+    app.installTranslator(fluentTranslator)
+    app.installTranslator(seraphineTranslator)
+
+    host = OpggHost(eventLoop)
+
+    eventLoop.run_until_complete(appCloseEvent.wait())
+    eventLoop.close()
+
+
+if __name__ == '__main__':
+    main()

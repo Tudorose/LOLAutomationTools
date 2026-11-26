@@ -192,3 +192,21 @@
 ![pickCards](https://github.com/user-attachments/assets/df5aa45a-8593-44c9-8c3f-bec315552113)
 
 > 该功能使用图形处理和键盘模拟方式实现，仅测试目前较常用的两个分辨率（1920x1080/2560x1440），其他分辨率在未自行配置的情况下无法正常使用（特别是16：9缩放比之外的分辨率），检测允许一定的滤镜范围，但建议使用该功能时不要开滤镜，以免导致某个检测无效。
+
+
+---
+
+# 扩展模块（第三方，由 Tudorose 维护）
+
+本仓库在宿主配置之上附带两个扩展：
+
+| 模块 | 说明 | 安装 |
+|---|---|---|
+| **[VoiceModule](voice-module/)** | 本地语音转文字 → 发送到游戏聊天；敏感词过滤、替换规则 | [voice-module/README.md](voice-module/README.md) |
+| **[OP.GG launcher](opgg-launcher/)** | 把 Seraphine 的 OP.GG 窗口嫁接到"扩展功能"页 | [opgg-launcher/README.md](opgg-launcher/README.md) |
+
+一键安装（在本仓库根目录）：
+```powershell
+.\scripts\install.ps1 -HostDir <宿主目录> -ModelDir <模型目录>
+```
+宿主程序本身请从[上游发布页](https://github.com/Seraph1ne/LOLAutomationTools/releases)获取；本仓库不分发宿主及 ASR 模型。

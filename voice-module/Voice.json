@@ -1,0 +1,22 @@
+{
+  "Enabled": true,
+  "Hotkey": 32,
+  "Model": "sensevoice",
+  "ModelPath": "Models\\\\sense-voice-funasr-nano",
+  "Language": "zh",
+  "MicDevice": 0,
+  "Target": "team",
+  "UseVad": true,
+  "MaxDurationMs": 10000,
+  "AutoSend": true,
+  "VadThreshold": 0.5,
+  "VadMinSpeech": 0.3,
+  "VadMinSilence": 1.5,
+  "NumThreads": 0,
+  "AsrDebugLog": false,
+  "StripPunct": false,
+  "VadPath": "Models\\sense-voice-funasr-nano\\silero_vad_v5.onnx",
+  "UseItn": true,
+  "UseCensorWords": false,
+  "S2T": false
+}

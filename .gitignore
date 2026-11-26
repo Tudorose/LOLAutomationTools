@@ -1,0 +1,26 @@
+# ===== binaries (distributed via Releases) =====
+*.dll
+*.exe
+!*.exe.config
+*.pdb
+*.snk
+__pycache__/
+*.pyc
+
+# ===== models (254 MB; NOT redistributed, user downloads from link in README) =====
+Models/
+*.onnx
+
+# ===== vendored Seraphine runtime (redistributed separately) =====
+opgg-launcher/vendor/
+
+# ===== runtime state / logs / dumps =====
+*.log
+*.dmp
+*.uidump
+Logs/
+backups/
+dist/
+
+# ===== user data / temp probes =====
+_*.py
