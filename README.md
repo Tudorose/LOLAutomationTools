@@ -1,31 +1,8 @@
-
 <div align="right">
   <details>
-    <summary >🌐 Language</summary>
-    <div>
-      <div align="center">
-        <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=en">English</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=zh-CN">简体中文</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=zh-TW">繁體中文</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=ja">日本語</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=ko">한국어</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=hi">हिन्दी</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=th">ไทย</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=fr">Français</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=de">Deutsch</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=es">Español</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=it">Italiano</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=ru">Русский</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=pt">Português</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=nl">Nederlands</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=pl">Polski</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=ar">العربية</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=fa">فارسی</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=tr">Türkçe</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=vi">Tiếng Việt</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=id">Bahasa Indonesia</a>
-        | <a href="https://openaitx.github.io/view.html?user=Seraph1ne&project=LOLAutomationTools&lang=as">অসমীয়া</
-      </div>
+    <summary>🌐 Language</summary>
+    <div align="center">
+      **简体中文** | <a href="./README.en.md">English</a> | <a href="./README.zh-TW.md">繁體中文</a> | <a href="./README.ja.md">日本語</a> | <a href="./README.ko.md">한국어</a> | <a href="./README.hi.md">हिन्दी</a> | <a href="./README.th.md">ไทย</a> | <a href="./README.fr.md">Français</a> | <a href="./README.de.md">Deutsch</a> | <a href="./README.es.md">Español</a> | <a href="./README.it.md">Italiano</a> | <a href="./README.ru.md">Русский</a> | <a href="./README.pt.md">Português</a> | <a href="./README.nl.md">Nederlands</a> | <a href="./README.pl.md">Polski</a> | <a href="./README.ar.md">العربية</a> | <a href="./README.fa.md">فارسی</a> | <a href="./README.tr.md">Türkçe</a> | <a href="./README.vi.md">Tiếng Việt</a> | <a href="./README.id.md">Bahasa Indonesia</a> | <a href="./README.as.md">অসমীয়া</a>
     </div>
   </details>
 </div>
